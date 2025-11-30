@@ -46,8 +46,41 @@ The tool processes multiple pages in parallel for speed, with configurable resol
 
 ## Installation
 
+### Using pip
+
 ```bash
 pip install nano-pdf
+```
+
+### Using uv (Recommended)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver.
+
+1. Install `uv` (if not already installed):
+```bash
+# macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+2. Clone the repository and sync dependencies:
+```bash
+git clone https://github.com/gavrielc/Nano-PDF.git
+cd Nano-PDF
+uv sync
+```
+
+3. Run the tool using `uv run`:
+```bash
+uv run nano-pdf edit my_deck.pdf 2 "Your edit here"
+```
+
+Or activate the virtual environment and use `nano-pdf` directly:
+```bash
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+nano-pdf edit my_deck.pdf 2 "Your edit here"
 ```
 
 ## Configuration
@@ -200,6 +233,22 @@ The tool uses Tesseract OCR to restore searchable text. For best results, ensure
 ## Running from Source
 
 If you want to run the latest development version:
+
+### Using uv (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/gavrielc/Nano-PDF.git
+cd Nano-PDF
+
+# Sync dependencies (creates virtual environment automatically)
+uv sync
+
+# Run the tool
+uv run nano-pdf edit my_deck.pdf 2 "Your edit here"
+```
+
+### Using pip
 
 ```bash
 # Clone the repository
