@@ -89,11 +89,23 @@ You need a **paid** Google Gemini API key with billing enabled. Free tier keys d
 
 1. Get an API key from [Google AI Studio](https://aistudio.google.com/api-keys)
 2. Enable billing on your Google Cloud project
-3. Set it as an environment variable:
+3. Set it as an environment variable using one of these methods:
 
+**Option 1: Using a `.env` file (Recommended for development)**
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit .env and add your API key
+# GEMINI_API_KEY=your_api_key_here
+```
+
+**Option 2: Export as environment variable**
 ```bash
 export GEMINI_API_KEY="your_api_key_here"
 ```
+
+The tool automatically loads environment variables from a `.env` file if present (using `python-dotenv`).
 
 **Note:** This tool uses Gemini 3 Pro Image which requires a paid API tier. See [pricing](https://ai.google.dev/pricing) for details.
 
