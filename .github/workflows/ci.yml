@@ -57,6 +57,8 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         choco install poppler tesseract
+        echo "C:\Program Files\Tesseract-OCR" >> $env:GITHUB_PATH
+        echo "C:\ProgramData\chocolatey\lib\poppler\library\bin" >> $env:GITHUB_PATH
 
     - name: Install Python dependencies
       run: |

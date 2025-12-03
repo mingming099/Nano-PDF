@@ -1,6 +1,4 @@
 import os
-from pathlib import Path
-from typing import List, Tuple
 import subprocess
 import shutil
 from pdf2image import convert_from_path
