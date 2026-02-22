@@ -13,6 +13,11 @@ def get_client():
         raise ValueError("GEMINI_API_KEY not found in environment variables")
     return genai.Client(api_key=api_key)
 
+
+def get_model() -> str:
+    """Resolve model slug from env; defaults to cheaper flash image model."""
+    return os.getenv("NANO_PDF_MODEL", "gemini-2.5-flash-image")
+
 def generate_edited_slide(
     target_image: Image.Image,
     style_reference_images: List[Image.Image],
@@ -26,6 +31,7 @@ def generate_edited_slide(
     Returns tuple of (generated PIL Image, optional text response).
     """
     client = get_client()
+    model_id = get_model()
 
     # Construct the prompt
     prompt_parts = []
@@ -54,7 +60,7 @@ def generate_edited_slide(
     # Call the model
     try:
         response = client.models.generate_content(
-            model='gemini-3-pro-image-preview',
+            model=model_id,
             contents=prompt_parts,
             config=config
         )
@@ -106,6 +112,7 @@ def generate_new_slide(
     Returns tuple of (generated PIL Image, optional text response).
     """
     client = get_client()
+    model_id = get_model()
 
     # Construct the prompt
     prompt_parts = []
@@ -133,7 +140,7 @@ def generate_new_slide(
     # Call the model
     try:
         response = client.models.generate_content(
-            model='gemini-3-pro-image-preview',
+            model=model_id,
             contents=prompt_parts,
             config=config
         )

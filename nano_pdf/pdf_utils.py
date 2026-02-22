@@ -2,9 +2,10 @@ import os
 import subprocess
 import shutil
 from pdf2image import convert_from_path
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter, PageObject, Transformation
 import pytesseract
 from PIL import Image
+
 
 def check_system_dependencies():
     """Checks if required system dependencies are installed."""
@@ -33,10 +34,12 @@ def check_system_dependencies():
             f"See https://github.com/gavrielc/Nano-PDF#readme for more details."
         )
 
+
 def get_page_count(pdf_path: str) -> int:
     """Returns the total number of pages in the PDF."""
     reader = PdfReader(pdf_path)
     return len(reader.pages)
+
 
 def extract_full_text(pdf_path: str) -> str:
     """Extracts the full text from a PDF using pdftotext (via subprocess for speed/layout)."""
@@ -49,41 +52,43 @@ def extract_full_text(pdf_path: str) -> str:
             check=True
         )
         raw_text = result.stdout
-        
+
         # Split by form feed to get pages
         pages = raw_text.split('\f')
-        
+
         formatted_pages = []
         for i, page_text in enumerate(pages):
             # Skip empty pages at the end if any
             if not page_text.strip():
                 continue
-                
+
             # Strip whitespace
             clean_text = page_text.strip()
-            
+
             # Truncate to 2000 chars
             if len(clean_text) > 2000:
                 clean_text = clean_text[:2000] + "...[truncated]"
-            
+
             # Wrap in page tags (1-indexed)
             formatted_pages.append(f"<page-{i+1}>\n{clean_text}\n</page-{i+1}>")
-            
+
         return "<document_context>\n" + "\n".join(formatted_pages) + "\n</document_context>"
     except subprocess.CalledProcessError as e:
         print(f"Error extracting text: {e}")
         return ""
 
+
 def render_page_as_image(pdf_path: str, page_number: int) -> Image.Image:
     """Renders a specific page (1-indexed) as a PIL Image."""
     images = convert_from_path(
-        pdf_path, 
-        first_page=page_number, 
+        pdf_path,
+        first_page=page_number,
         last_page=page_number
     )
     if not images:
         raise ValueError(f"Could not render page {page_number}")
     return images[0]
+
 
 def rehydrate_image_to_pdf(image: Image.Image, output_pdf_path: str):
     """
@@ -94,6 +99,55 @@ def rehydrate_image_to_pdf(image: Image.Image, output_pdf_path: str):
     with open(output_pdf_path, 'wb') as f:
         f.write(pdf_bytes)
 
+
+def _page_rotation(page) -> int:
+    """Return normalized page rotation in degrees."""
+    try:
+        rot = int(getattr(page, "rotation", 0) or 0)
+    except Exception:
+        try:
+            rot = int(page.get('/Rotate', 0) or 0)
+        except Exception:
+            rot = 0
+    rot %= 360
+    return rot
+
+
+def _fit_page_with_padding(source_page, target_width: float, target_height: float):
+    """Fit page into target size while preserving aspect ratio (no stretching)."""
+    src_w = float(source_page.mediabox.width)
+    src_h = float(source_page.mediabox.height)
+
+    if src_w <= 0 or src_h <= 0:
+        canvas = PageObject.create_blank_page(width=target_width, height=target_height)
+        canvas.merge_page(source_page)
+        return canvas
+
+    scale = min(target_width / src_w, target_height / src_h)
+    scaled_w = src_w * scale
+    scaled_h = src_h * scale
+    tx = (target_width - scaled_w) / 2
+    ty = (target_height - scaled_h) / 2
+
+    canvas = PageObject.create_blank_page(width=target_width, height=target_height)
+    source_page.add_transformation(Transformation().scale(scale).translate(tx, ty))
+    canvas.merge_page(source_page)
+    return canvas
+
+
+def _build_replacement_page(original_page, new_page):
+    """Build replacement page preserving original dimensions + rotation metadata."""
+    target_w = float(original_page.mediabox.width)
+    target_h = float(original_page.mediabox.height)
+    result = _fit_page_with_padding(new_page, target_w, target_h)
+
+    rot = _page_rotation(original_page)
+    if rot:
+        result.rotate(rot)
+
+    return result
+
+
 def replace_page_in_pdf(original_pdf_path: str, new_page_pdf_path: str, page_number: int, output_pdf_path: str):
     """
     Replaces a specific page in the original PDF with the new single-page PDF.
@@ -102,26 +156,18 @@ def replace_page_in_pdf(original_pdf_path: str, new_page_pdf_path: str, page_num
     reader = PdfReader(original_pdf_path)
     writer = PdfWriter()
 
-    # Add pages before the target
     for i in range(len(reader.pages)):
         if i == page_number - 1:
-            # This is the page to replace
             original_page = reader.pages[i]
-            original_width = original_page.mediabox.width
-            original_height = original_page.mediabox.height
-            
             new_reader = PdfReader(new_page_pdf_path)
             new_page = new_reader.pages[0]
-            
-            # Resize new page to match original dimensions
-            new_page.scale_to(width=float(original_width), height=float(original_height))
-            
-            writer.add_page(new_page)
+            writer.add_page(_build_replacement_page(original_page, new_page))
         else:
             writer.add_page(reader.pages[i])
 
     with open(output_pdf_path, 'wb') as f:
         writer.write(f)
+
 
 def batch_replace_pages(original_pdf_path: str, replacements: dict[int, str], output_pdf_path: str):
     """
@@ -134,25 +180,17 @@ def batch_replace_pages(original_pdf_path: str, replacements: dict[int, str], ou
     for i in range(len(reader.pages)):
         page_num = i + 1
         if page_num in replacements:
-            # This page needs replacement
             original_page = reader.pages[i]
-            original_width = original_page.mediabox.width
-            original_height = original_page.mediabox.height
-
             new_pdf_path = replacements[page_num]
             new_reader = PdfReader(new_pdf_path)
             new_page = new_reader.pages[0]
-
-            # Resize new page to match original dimensions
-            new_page.scale_to(width=float(original_width), height=float(original_height))
-
-            writer.add_page(new_page)
+            writer.add_page(_build_replacement_page(original_page, new_page))
         else:
-            # Keep original page
             writer.add_page(reader.pages[i])
 
     with open(output_pdf_path, 'wb') as f:
         writer.write(f)
+
 
 def insert_page(original_pdf_path: str, new_page_pdf_path: str, after_page: int, output_pdf_path: str):
     """
@@ -162,26 +200,19 @@ def insert_page(original_pdf_path: str, new_page_pdf_path: str, after_page: int,
     reader = PdfReader(original_pdf_path)
     writer = PdfWriter()
 
-    # Get dimensions from the first page as reference
     reference_page = reader.pages[0]
-    ref_width = reference_page.mediabox.width
-    ref_height = reference_page.mediabox.height
 
-    # Load the new page
     new_reader = PdfReader(new_page_pdf_path)
     new_page = new_reader.pages[0]
-    new_page.scale_to(width=float(ref_width), height=float(ref_height))
+    prepared_new_page = _build_replacement_page(reference_page, new_page)
 
-    # Insert at beginning
     if after_page == 0:
-        writer.add_page(new_page)
+        writer.add_page(prepared_new_page)
 
-    # Add all original pages, inserting the new one at the right position
     for i in range(len(reader.pages)):
         writer.add_page(reader.pages[i])
-        # Insert after this page if it matches
         if i + 1 == after_page:
-            writer.add_page(new_page)
+            writer.add_page(prepared_new_page)
 
     with open(output_pdf_path, 'wb') as f:
         writer.write(f)
