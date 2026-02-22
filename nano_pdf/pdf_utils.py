@@ -136,15 +136,27 @@ def _fit_page_with_padding(source_page, target_width: float, target_height: floa
 
 
 def _build_replacement_page(original_page, new_page):
-    """Build replacement page preserving original dimensions + rotation metadata."""
+    """
+    Build replacement page preserving *visual* orientation and aspect ratio.
+
+    Important: for originals using /Rotate 90|270, we normalize to rotation=0 and
+    swap canvas dimensions so viewers render naturally without requiring device
+    rotation and without squeeze artifacts.
+    """
     target_w = float(original_page.mediabox.width)
     target_h = float(original_page.mediabox.height)
-    result = _fit_page_with_padding(new_page, target_w, target_h)
-
     rot = _page_rotation(original_page)
-    if rot:
-        result.rotate(rot)
 
+    # Preserve visual orientation (what users actually see), not raw mediabox.
+    if rot in (90, 270):
+        visual_w, visual_h = target_h, target_w
+    else:
+        visual_w, visual_h = target_w, target_h
+
+    result = _fit_page_with_padding(new_page, visual_w, visual_h)
+
+    # Intentionally normalize to rotation=0 to avoid double-rotation behavior
+    # across PDF viewers and mobile apps.
     return result
 
 
